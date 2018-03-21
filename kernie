@@ -1,0 +1,334 @@
+#!/bin/bash
+
+# Kernie - Kernel Genie, a Gentoo kernel manager.
+# Copyright (C) 2018 by João Santos (joaompssantos@gmail.com)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+# The following commands shouldn't be necessary if the script is installed through Portage
+command -v dialog >/dev/null 2>&1 || { echo >&2 "This script requires dialog which is not installed. Please install using: emerge -a dev-util/dialog"; exit 1; }
+
+command -v eclean-kernel -l >/dev/null 2>&1 || { echo >&2 "This script requires eclean-kernel which is not installed. Please install using: emerge -a app-admin/eclean-kernel"; exit 1; }
+
+# Ignore wildcards
+set -f
+
+# On Exit
+EXIT_CMDS="rm -f $OUTPUT; rm -f $INPUT; set +f; exit;" # clear; exit;"
+
+# Store menu options selected by the user
+INPUT=/tmp/menu.sh.$$
+
+# Storage file for displaying cal and date command output
+OUTPUT=/tmp/output.sh.$$
+
+# Trap and delete temp files
+# trap "rm -f $OUTPUT; rm -f $INPUT; clear; exit" SIGHUP SIGINT SIGTERM
+trap "rm -f $OUTPUT; rm -f $INPUT; exit" SIGHUP SIGINT SIGTERM
+
+# Kernel edit path
+KERNEL_PATH=/usr/src/linux
+
+# Eliminate wildcards from array
+function proper_array() {
+    my_array=($@)
+
+    value='*'
+
+    for i in "${!my_array[@]}"; do
+        if [[ "${my_array[$i]}" = "${value}" ]]; then
+                pos="${i}";
+        fi
+    done
+
+    unset my_array["$pos"]
+
+    my_array[$((pos-1))]="${my_array[$((pos-1))]}*"
+
+    echo ${my_array[@]}
+}
+
+# Function that performs upgrade kernel operations
+function change_kernel {
+    readarray -t array <<< $(eselect kernel list | tail -n +2 | column)
+
+    readarray -t array <<< $(proper_array ${array[@]})
+
+    dialog --backtitle "Kernel Operations by jpataias©" --title "Available kernel symlink targets:" --menu "" 14 78 8 ${array[@]} 2>"${INPUT}"
+
+    exitstatus=$?
+    kernel_choice=$(<"${INPUT}")
+
+    if [[ "$exitstatus" != 1 ]]; then
+        kernel_choice=$(echo ${kernel_choice} | tr -d '[]')
+
+        eselect kernel set ${kernel_choice}
+    fi
+}
+
+# Function that performs upgrade kernel operations
+function upgrade_kernel {
+    if (dialog --title "Config Backup" --backtitle "Kernel Operations by jpataias©" --yesno "Do you wish to make a backup of the config file?" 8 78) then
+        (cd ${KERNEL_PATH} && cp .config ~/kernel.bak/kernel-config-`uname -r`)
+    fi
+    
+    unset array
+
+    readarray -t array <<< $(eselect kernel list | tail -n +2 | column)
+
+    readarray -t array <<< $(proper_array ${array[@]})
+
+    dialog --backtitle "Kernel Operations by jpataias©" --title "Available kernel symlink targets:" --menu "" 14 78 8 ${array[@]} 2>"${INPUT}"
+
+    exitstatus=$?
+    kernel_choice=$(<"${INPUT}")
+
+    if [[ "$exitstatus" != 1 ]]; then
+        kernel_choice=$(echo ${kernel_choice} | tr -d '[]')
+
+        eselect kernel set ${kernel_choice}
+
+        if (dialog --title "Config Copy" --backtitle "Kernel Operations by jpataias©" --yesno "Do you wish to copy current kernel config file?" 8 78) then
+            cp ~/kernel.bak/kernel-config-`uname -r` ${KERNEL_PATH}/.config
+        fi
+
+        if (dialog --title "Config Type" --backtitle "Kernel Operations by jpataias©" --yesno "Should the kernel configuration use the default values?" 8 78) then
+            (echo "Starting new kernel configuration:"; cd ${KERNEL_PATH} && make olddefconfig; echo "Kernel configuration completed.") | dialog --programbox 40 160
+        else
+            echo "Starting new kernel configuration:"
+            cd ${KERNEL_PATH} && make silentoldconfig
+            echo "Kernel configuration completed."
+        fi
+
+        {
+            cd ${KERNEL_PATH}
+            make -j8
+            make modules_prepare
+            emerge @module-rebuild
+            make modules_install
+            make install
+
+            printf "Upgrade completed.\n"
+        } &> ${OUTPUT} &
+
+        exit_status=1
+
+        while [ $exit_status -ne 0 ]
+        do
+            dialog \
+            --title "Kernel make output" \
+            --backtitle "Kernel Operations by jpataias©" \
+            --ok-label Close \
+            --extra-button --extra-label Inspect \
+            --tailbox ${OUTPUT} $(stty size)
+
+            exit_status=$?
+
+            if [ $exit_status -eq 255 ]; then
+                    dialog --textbox ${OUTPUT}  21 80
+            fi
+        done
+
+        wait
+    fi
+}
+
+# Function that performs update kernel operations
+function rebuild_kernel {
+    {
+        cd ${KERNEL_PATH}
+        make menuconfig
+    } #&> ${OUTPUT}
+
+    {
+        cd ${KERNEL_PATH}
+        make -j8
+        make modules_install
+        make install
+
+        printf "Update completed.\n"
+    } &> ${OUTPUT} &
+
+    exit_status=1
+
+    while [ $exit_status -ne 0 ]
+    do
+        dialog \
+        --title "Kernel make output" \
+        --backtitle "Kernel Operations by jpataias©" \
+        --ok-label Close \
+        --extra-button --extra-label Inspect \
+        --tailbox ${OUTPUT} $(stty size)
+
+        exit_status=$?
+
+        if [ $exit_status -eq 255 ]; then
+                dialog --textbox ${OUTPUT}  21 80
+        fi
+    done
+
+    wait
+}
+
+# Function that performs kernel installation to grub/boot
+function grub_update {
+    {
+        cd ${KERNEL_PATH}
+        grub-mkconfig -o /boot/grub/grub.cfg
+    } &> ${OUTPUT} &
+
+    exit_status=1
+
+    while [ $exit_status -ne 0 ]
+    do
+        dialog \
+        --title "Kernel Instalation Output" \
+        --ok-label Close \
+        --backtitle "Kernel Operations by jpataias©" \
+        --extra-button --extra-label Inspect \
+        --tailbox ${OUTPUT} $(stty size)
+
+        exit_status=$?
+
+        if [ $exit_status -eq 255 ]; then
+                dialog --textbox ${OUTPUT}  21 80
+        fi
+    done
+
+    wait
+}
+
+# Function that performs clean kernel operations
+function clean_kernel {
+    {
+        cd ${KERNEL_PATH}
+        make clean
+        printf "Clean completed.\n"
+    } &> ${OUTPUT} &
+
+    exit_status=1
+
+    while [ $exit_status -ne 0 ]
+    do
+        dialog \
+        --title "Kernel Make Clean Output" \
+        --ok-label Close \
+        --backtitle "Kernel Operations by jpataias©" \
+        --extra-button --extra-label Inspect \
+        --tailbox ${OUTPUT} 21 80
+
+        exit_status=$?
+
+        if [ $exit_status -eq 255 ]; then
+            dialog --textbox ${OUTPUT}  21 80
+        fi
+    done
+
+    wait
+}
+
+# Function that deletes installed kernels from the system
+function delete_kernel {
+    unset sorted
+
+    readarray -t sorted <<< $(eclean-kernel -l |& grep -v '^-' | grep "^[!0-9]" | rev | cut -c 2- | rev | column -t -o $'\t' | cut -f 1 | sort -V)
+
+    count=1
+    unset array
+
+    for i in ${sorted[@]}; do
+        echo $i $count $(($count * 3 - 3)) $(($(($count * 3 - 3))+1)) $(($(($count * 3 - 3))+2))
+        array[$(($count * 3 - 3))]=$count
+        array[$(($(($count * 3 - 3))+1))]=$i
+        array[$(($(($count * 3 - 3))+2))]="off"
+        count=$((count+1))
+    done
+
+    dialog                                      \
+    --backtitle "Kernel Operations by jpataias©" \
+    --title 'Kernel Removal Selection'        \
+    --checklist 'Select kernel(s) to remove:'  \
+    0 78 0 ${array[@]} 2>"${INPUT}"
+
+    kernel_choice=$(<"${INPUT}")
+
+    for i in ${kernel_choice[@]}; do
+        string=${sorted[$((i-1))]}
+
+        if [[ $string == *".old"* ]]; then
+            string=$(echo $string | sed 's/.old*//')
+
+            rm /boot/vmlinuz-${string}.old
+            rm /boot/System.map-${string}.old
+            rm /boot/config-${string}.old
+        else
+            rm -r /lib/modules/${string}
+            rm /boot/vmlinuz-${string}
+            rm /boot/System.map-${string}
+            rm /boot/config-${string}
+            rm -r /usr/src/linux-${string}
+        fi
+    done
+}
+
+#Script loop
+while true
+do
+    ### display main menu ###
+    dialog --clear \
+    --backtitle "Kernel Operations by jpataias©" \
+    --title "Main Menu" \
+    --menu  "Choose an operation:" 14 78 7 \
+            "Change Kernel" "Select a different kernel version to work on." \
+            "Upgrade Kernel" "Upgrade kernel to a new version (includes compilation)." \
+            "Rebuild Kernel" "Rebuild kernel configuration (includes compilation)." \
+            "Update Grub" "Update GRUB configuration." \
+            "Clean Kernel" "Clean kernel compilation." \
+            "Delete Kernel" "Delete specific kernel versions from disk." \
+            "Exit Script" "Terminate this script." 2>"${INPUT}"
+
+    exitstatus=$?
+    [[ $exitstatus -eq 1 ]] && eval ${EXIT_CMDS};
+
+    choice=$(<"${INPUT}")
+
+    ### Deals with the main menu choices ###
+    case $choice in
+        "Change Kernel")
+            change_kernel
+        ;;
+        "Upgrade Kernel")
+            upgrade_kernel
+        ;;
+        "Rebuild Kernel")
+            rebuild_kernel
+        ;;
+        "Update Grub")
+            grub_update
+        ;;
+        "Clean Kernel")
+            clean_kernel
+        ;;
+        "Delete Kernel")
+            delete_kernel
+        ;;
+        "Exit Script")
+            eval ${EXIT_CMDS}
+        ;;
+    esac
+done
+
+# This point shouldn't be reached, but just in case
+eval ${EXIT_CMDS}
