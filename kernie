@@ -35,11 +35,27 @@ INPUT=/tmp/menu.sh.$$
 OUTPUT=/tmp/output.sh.$$
 
 # Trap and delete temp files
-# trap "rm -f $OUTPUT; rm -f $INPUT; clear; exit" SIGHUP SIGINT SIGTERM
-trap "rm -f $OUTPUT; rm -f $INPUT; exit" SIGHUP SIGINT SIGTERM
+trap "rm -f $OUTPUT; rm -f $INPUT; clear; exit" SIGHUP SIGINT SIGTERM
 
-# Kernel edit path
-KERNEL_PATH=/usr/src/linux
+# Source configuration file
+if [ -f /etc/kernie.conf ]; then
+    source /etc/kernie.conf
+fi
+
+# Kernel sources
+if [[ ! ${KERNEL_SOURCES+x} ]]; then
+    KERNEL_SOURCES=gentoo-sources
+fi
+
+# Kernel sources path
+if [[ ! ${KERNEL_SOURCES_PATH+x} ]]; then
+    KERNEL_SOURCES_PATH=/usr/src/linux
+fi
+
+# Kernel backup path
+if [[ ! ${KERNEL_BACKUP_PATH+x} ]]; then
+    KERNEL_BACKUP_PATH=/root/kernel.bak
+fi
 
 # Eliminate wildcards from array
 function proper_array() {
@@ -81,9 +97,15 @@ function change_kernel {
 # Function that performs upgrade kernel operations
 function upgrade_kernel {
     if (dialog --title "Config Backup" --backtitle "Kernel Operations by jpataias©" --yesno "Do you wish to make a backup of the config file?" 8 78) then
-        (cd ${KERNEL_PATH} && cp .config ~/kernel.bak/kernel-config-`uname -r`)
+        if [[ ! -e ${KERNEL_BACKUP_PATH} ]]; then
+            mkdir -p ${KERNEL_BACKUP_PATH}
+        elif [[ ! -d ${KERNEL_BACKUP_PATH} ]]; then
+            echo "${KERNEL_BACKUP_PATH} already exists but is not a directory" 1>&2
+        fi
+
+        (cd ${KERNEL_SOURCES_PATH} && cp .config ${KERNEL_BACKUP_PATH}/kernel-config-`uname -r`)
     fi
-    
+
     unset array
 
     readarray -t array <<< $(eselect kernel list | tail -n +2 | column)
@@ -100,20 +122,30 @@ function upgrade_kernel {
 
         eselect kernel set ${kernel_choice}
 
+        # Get actual kernel name
+        kernel_choice=$(eselect kernel list | tail -n +2 | awk '{print $2}' | sed -n ${kernel_choice}p)
+        # Remove not needed information
+        kernel_choice=${kernel_choice#*-}
+        kernel_choice=${kernel_choice%-*}
+        # Get proper version to ensure it is installed and that it can't be depclean-ed
+        kernel_choice=$(eix gentoo-sources | tail -n +3 | head -n -5 | awk '{print $2}' | sed -e "s/^(~)//" -e "s/\^bs$//" | grep ${kernel_choice} | tail -n -1)
+        # Add selected kernel version to world
+        emerge --noreplace =sys-kernel/${KERNEL_SOURCES}-${kernel_choice} &> ${OUTPUT}
+
         if (dialog --title "Config Copy" --backtitle "Kernel Operations by jpataias©" --yesno "Do you wish to copy current kernel config file?" 8 78) then
-            cp ~/kernel.bak/kernel-config-`uname -r` ${KERNEL_PATH}/.config
+            cp ${KERNEL_BACKUP_PATH}/kernel-config-`uname -r` ${KERNEL_SOURCES_PATH}/.config
         fi
 
         if (dialog --title "Config Type" --backtitle "Kernel Operations by jpataias©" --yesno "Should the kernel configuration use the default values?" 8 78) then
-            (echo "Starting new kernel configuration:"; cd ${KERNEL_PATH} && make olddefconfig; echo "Kernel configuration completed.") | dialog --programbox 40 160
+            (echo "Starting new kernel configuration:"; cd ${KERNEL_SOURCES_PATH} && make olddefconfig; echo "Kernel configuration completed.") | dialog --programbox 40 160
         else
             echo "Starting new kernel configuration:"
-            cd ${KERNEL_PATH} && make silentoldconfig
+            cd ${KERNEL_SOURCES_PATH} && make silentoldconfig
             echo "Kernel configuration completed."
         fi
 
         {
-            cd ${KERNEL_PATH}
+            cd ${KERNEL_SOURCES_PATH}
             make -j8
             make modules_prepare
             emerge @module-rebuild
@@ -148,12 +180,12 @@ function upgrade_kernel {
 # Function that performs update kernel operations
 function rebuild_kernel {
     {
-        cd ${KERNEL_PATH}
+        cd ${KERNEL_SOURCES_PATH}
         make menuconfig
     } #&> ${OUTPUT}
 
     {
-        cd ${KERNEL_PATH}
+        cd ${KERNEL_SOURCES_PATH}
         make -j8
         make modules_install
         make install
@@ -185,7 +217,7 @@ function rebuild_kernel {
 # Function that performs kernel installation to grub/boot
 function grub_update {
     {
-        cd ${KERNEL_PATH}
+        cd ${KERNEL_SOURCES_PATH}
         grub-mkconfig -o /boot/grub/grub.cfg
     } &> ${OUTPUT} &
 
@@ -213,7 +245,7 @@ function grub_update {
 # Function that performs clean kernel operations
 function clean_kernel {
     {
-        cd ${KERNEL_PATH}
+        cd ${KERNEL_SOURCES_PATH}
         make clean
         printf "Clean completed.\n"
     } &> ${OUTPUT} &
@@ -267,6 +299,9 @@ function delete_kernel {
     for i in ${kernel_choice[@]}; do
         string=${sorted[$((i-1))]}
 
+        # Remove kernel version entry from world if it exists, creating a backup file should anything go wrong
+        sed -i.bak '/${string%-gentoo}/d' /var/lib/portage/world
+
         if [[ $string == *".old"* ]]; then
             string=$(echo $string | sed 's/.old*//')
 
@@ -283,10 +318,10 @@ function delete_kernel {
     done
 }
 
-#Script loop
+# Script loop
 while true
 do
-    ### display main menu ###
+    # Display main menu
     dialog --clear \
     --backtitle "Kernel Operations by jpataias©" \
     --title "Main Menu" \
@@ -304,7 +339,7 @@ do
 
     choice=$(<"${INPUT}")
 
-    ### Deals with the main menu choices ###
+    # Deals with the main menu choices
     case $choice in
         "Change Kernel")
             change_kernel
