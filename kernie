@@ -299,9 +299,6 @@ function delete_kernel {
     for i in ${kernel_choice[@]}; do
         string=${sorted[$((i-1))]}
 
-        # Remove kernel version entry from world if it exists, creating a backup file should anything go wrong
-        sed -i.bak '/${string%-gentoo}/d' /var/lib/portage/world
-
         if [[ $string == *".old"* ]]; then
             string=$(echo $string | sed 's/.old*//')
 
@@ -309,6 +306,9 @@ function delete_kernel {
             rm /boot/System.map-${string}.old
             rm /boot/config-${string}.old
         else
+            # Remove kernel version entry from world if it exists, creating a backup file should anything go wrong
+            sed -i.bak '/${string%-gentoo}/d' /var/lib/portage/world
+
             rm -r /lib/modules/${string}
             rm /boot/vmlinuz-${string}
             rm /boot/System.map-${string}
