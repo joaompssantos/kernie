@@ -306,8 +306,8 @@ function delete_kernel {
             rm /boot/System.map-${string}.old
             rm /boot/config-${string}.old
         else
-            # Remove kernel version entry from world if it exists, creating a backup file should anything go wrong
-            sed -i.bak '/${string%-gentoo}/d' /var/lib/portage/world
+            # Remove kernel version entry from world
+            echo emerge -C =$(grep ${string%-gentoo} /var/lib/portage/world)
 
             rm -r /lib/modules/${string}
             rm /boot/vmlinuz-${string}
