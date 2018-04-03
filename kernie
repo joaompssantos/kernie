@@ -26,7 +26,7 @@ command -v eclean-kernel -l >/dev/null 2>&1 || { echo >&2 "This script requires 
 set -f
 
 # On Exit
-EXIT_CMDS="rm -f $OUTPUT; rm -f $INPUT; set +f; exit;" # clear; exit;"
+EXIT_CMDS="rm -f $OUTPUT; rm -f $INPUT; set +f; clear; exit;"
 
 # Store menu options selected by the user
 INPUT=/tmp/menu.sh.$$
@@ -307,7 +307,7 @@ function delete_kernel {
             rm /boot/config-${string}.old
         else
             # Remove kernel version entry from world
-            echo emerge -C =$(grep ${string%-gentoo} /var/lib/portage/world)
+            emerge -C =$(echo $(grep ${string%-gentoo} /var/lib/portage/world) | tr ':' '-') > /dev/null 2>&1
 
             rm -r /lib/modules/${string}
             rm /boot/vmlinuz-${string}
