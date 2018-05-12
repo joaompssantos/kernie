@@ -130,7 +130,7 @@ function upgrade_kernel {
         # Get proper version to ensure it is installed and that it can't be depclean-ed
         kernel_choice=$(eix gentoo-sources | tail -n +3 | head -n -5 | awk '{print $2}' | sed -e "s/^(~)//" -e "s/\^bs$//" | grep ${kernel_choice} | tail -n -1)
         # Add selected kernel version to world
-        emerge --noreplace =sys-kernel/${KERNEL_SOURCES}-${kernel_choice} &> ${OUTPUT}
+        nohup emerge --noreplace =sys-kernel/${KERNEL_SOURCES}-${kernel_choice} &> ${OUTPUT} &
 
         if (dialog --title "Config Copy" --backtitle "Kernel Operations by jpataias©" --yesno "Do you wish to copy current kernel config file?" 8 78) then
             cp ${KERNEL_BACKUP_PATH}/kernel-config-`uname -r` ${KERNEL_SOURCES_PATH}/.config
@@ -217,6 +217,10 @@ function rebuild_kernel {
 # Function that performs kernel installation to grub/boot
 function grub_update {
     {
+        if [[ "GEN_INITRAMFS" -eq 1 ]]; then
+            ${GEN_INITRAMFS_CMD}
+        fi
+
         cd ${KERNEL_SOURCES_PATH}
         grub-mkconfig -o /boot/grub/grub.cfg
     } &> ${OUTPUT} &
@@ -307,7 +311,7 @@ function delete_kernel {
             rm /boot/config-${string}.old
         else
             # Remove kernel version entry from world
-            emerge -C =$(echo $(grep ${string%-gentoo} /var/lib/portage/world) | tr ':' '-') > /dev/null 2>&1
+            nohup emerge -C =$(echo $(grep ${string%-gentoo} /var/lib/portage/world) | tr ':' '-') > /dev/null 2>&1 &
 
             rm -r /lib/modules/${string}
             rm /boot/vmlinuz-${string}
