@@ -140,7 +140,7 @@ function upgrade_kernel {
             (echo "Starting new kernel configuration:"; cd ${KERNEL_SOURCES_PATH} && make olddefconfig; echo "Kernel configuration completed.") | dialog --programbox 40 160
         else
             echo "Starting new kernel configuration:"
-            cd ${KERNEL_SOURCES_PATH} && make silentoldconfig
+            cd ${KERNEL_SOURCES_PATH} && make syncconfig
             echo "Kernel configuration completed."
         fi
 
