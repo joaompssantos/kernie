@@ -57,6 +57,11 @@ if [[ ! ${KERNEL_BACKUP_PATH+x} ]]; then
     KERNEL_BACKUP_PATH=/root/kernel.bak
 fi
 
+# Kernel backup path
+if [[ ! ${WORLD_FILE_PATH+x} ]]; then
+    WORLD_FILE_PATH=/var/lib/portage/world
+fi
+
 # Eliminate wildcards from array
 function proper_array() {
     my_array=($@)
@@ -311,7 +316,30 @@ function delete_kernel {
             rm /boot/config-${string}.old
         else
             # Remove kernel version entry from world
-            nohup emerge -C =$(echo $(grep ${string%-gentoo} /var/lib/portage/world) | tr ':' '-') > /dev/null 2>&1 &
+            {
+                echo "emerge -C --deselect=y $(grep ${string%-gentoo} ${WORLD_FILE_PATH}} | tr ':' '-')"
+                emerge -C --deselect=y $(grep ${string%-gentoo} ${WORLD_FILE_PATH} | tr ':' '-')
+            } &> ${OUTPUT} &
+
+            exit_status=1
+
+            while [ $exit_status -ne 0 ]
+            do
+                dialog \
+                --title "Delete Kernel Output" \
+                --ok-label Close \
+                --backtitle "Kernel Operations by jpataias©" \
+                --extra-button --extra-label Inspect \
+                --tailbox ${OUTPUT}  $(stty size)
+
+                exit_status=$?
+
+                if [ $exit_status -eq 255 ]; then
+                    dialog --textbox ${OUTPUT}  21 80
+                fi
+            done
+
+            wait
 
             rm -r /lib/modules/${string}
             rm /boot/vmlinuz-${string}
