@@ -318,7 +318,20 @@ function delete_kernel {
             # Remove kernel version entry from world
             {
                 echo "emerge -C --deselect=y $(grep ${string%-gentoo} ${WORLD_FILE_PATH} | tr ':' '-')"
-                emerge -C --deselect=y $(grep ${string%-gentoo} ${WORLD_FILE_PATH} | tr ':' '-')
+
+                ckernel=$(grep ${string%-gentoo} ${WORLD_FILE_PATH} | tr ':' '-')
+
+                if [[ -z "$ckernel" ]]; then
+                    emerge -C --deselect=y $ckernel
+
+                    rm -r /lib/modules/${string}
+                    rm /boot/vmlinuz-${string}
+                    rm /boot/System.map-${string}
+                    rm /boot/config-${string}
+                    rm -r /usr/src/linux-${string}
+                else
+                    echo "Something went wrong while trying to remove kernel from the system."
+                fi
             } &> ${OUTPUT} &
 
             exit_status=1
@@ -340,12 +353,6 @@ function delete_kernel {
             done
 
             wait
-
-            rm -r /lib/modules/${string}
-            rm /boot/vmlinuz-${string}
-            rm /boot/System.map-${string}
-            rm /boot/config-${string}
-            rm -r /usr/src/linux-${string}
         fi
     done
 }
