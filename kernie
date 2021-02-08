@@ -321,7 +321,7 @@ function delete_kernel {
 
                 ckernel=$(grep ${string%-gentoo} ${WORLD_FILE_PATH} | tr ':' '-')
 
-                if [[ -z "$ckernel" ]]; then
+                if [[ ! -z "$ckernel" ]]; then
                     emerge -C --deselect=y $ckernel
 
                     rm -r /lib/modules/${string}
