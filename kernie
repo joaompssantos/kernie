@@ -317,9 +317,9 @@ function delete_kernel {
         else
             # Remove kernel version entry from world
             {
-                echo "emerge -C --deselect=y $(grep ${string%-gentoo} ${WORLD_FILE_PATH} | tr ':' '-')"
+                echo "emerge -C --deselect=y $(grep ${string/-gentoo/} ${WORLD_FILE_PATH} | tr ':' '-')"
 
-                ckernel=$(grep ${string%-gentoo} ${WORLD_FILE_PATH} | tr ':' '-')
+                ckernel=$(grep ${string/-gentoo/} ${WORLD_FILE_PATH} | tr ':' '-')
 
                 if [[ ! -z "$ckernel" ]]; then
                     emerge -C --deselect=y $ckernel
