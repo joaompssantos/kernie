@@ -131,7 +131,7 @@ function upgrade_kernel {
         kernel_choice=$(eselect kernel list | tail -n +2 | awk '{print $2}' | sed -n ${kernel_choice}p)
         # Remove not needed information
         kernel_choice=${kernel_choice#*-}
-        kernel_choice=${kernel_choice%-*}
+        kernel_choice=$(echo $kernel_choice | sed -e 's|-gentoo||g')
         # Get proper version to ensure it is installed and that it can't be depclean-ed
         kernel_choice=$(eix gentoo-sources | tail -n +3 | head -n -5 | awk '{print $2}' | sed -e "s/^(~)//" -e "s/\^bs$//" | grep ${kernel_choice} | tail -n -1)
         # Add selected kernel version to world
