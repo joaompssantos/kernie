@@ -32,7 +32,7 @@ EXIT_CMDS="rm -f $OUTPUT; rm -f $INPUT; set +f; clear; exit;"
 INPUT=/tmp/menu.sh.$$
 
 # Storage file for displaying cal and date command output
-OUTPUT=/tmp/output.sh.$$
+OUTPUT=/tmp/kernie.output.sh.$$
 
 # Trap and delete temp files
 trap "rm -f $OUTPUT; rm -f $INPUT; clear; exit" SIGHUP SIGINT SIGTERM
@@ -284,7 +284,8 @@ function clean_kernel {
 function delete_kernel {
     unset sorted
 
-    readarray -t sorted <<< $(eclean-kernel -l |& grep -v '^-' | grep "^[!0-9]" | rev | cut -c 2- | rev | column -t -o $'\t' | cut -f 1 | sort -V)
+    # readarray -t sorted <<< $(eclean-kernel -l |& grep -v '^-' | grep "^[!0-9]" | rev | cut -c 2- | rev | column -t -o $'\t' | cut -f 1 | sort -V)
+    readarray -t sorted <<< $(eclean-kernel -l |& grep -v '^-' | awk '{print $2}' | sort -V)
 
     count=1
     unset array
@@ -317,9 +318,10 @@ function delete_kernel {
         else
             # Remove kernel version entry from world
             {
-                echo "emerge -C --deselect=y $(grep ${string/-gentoo/} ${WORLD_FILE_PATH} | tr ':' '-')"
-
+                # Current kernel to be deleted
                 ckernel=$(grep ${string/-gentoo/} ${WORLD_FILE_PATH} | tr ':' '-')
+
+                echo "emerge -C --deselect=y $ckernel"
 
                 if [[ ! -z "$ckernel" ]]; then
                     emerge -C --deselect=y $ckernel
